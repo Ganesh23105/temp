@@ -1,21 +1,74 @@
-import React, { useState } from "react";
-import { Upload, User, FileText, Share2, Eye } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Upload, FileText, Share2, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAppContext } from "../context/AppContext";
 import "./UserDashboard.css";
 
 function UserDashboard() {
+  const navigate = useNavigate();
+  const { currentUser, addReport, shareReport, getUserReports, logout } = useAppContext();
   const [activeTab, setActiveTab] = useState("profile");
   const [selectedFile, setSelectedFile] = useState(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [doctorEmail, setDoctorEmail] = useState("");
+  const [reportToShare, setReportToShare] = useState(null);
+  const [userReports, setUserReports] = useState([]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      navigate("/login");
+    } else if (currentUser.role !== "patient") {
+      navigate("/doctor");
+    } else {
+      const reports = getUserReports(currentUser.id);
+      setUserReports(reports);
+    }
+  }, [currentUser, navigate, getUserReports]);
 
   const handleFileChange = (e) => {
-    setSelectedFile(e.target.files[0]);
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const fileData = event.target.result;
+        const result = addReport({
+          fileName: file.name,
+          fileData: fileData
+        });
+
+        if (result.success) {
+          const reports = getUserReports(currentUser.id);
+          setUserReports(reports);
+          alert("File uploaded successfully!");
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleShare = (e) => {
     e.preventDefault();
-    alert(`Document shared with ${doctorEmail}`);
-    setShowShareModal(false);
+    if (reportToShare) {
+      shareReport(reportToShare.id, doctorEmail);
+      const reports = getUserReports(currentUser.id);
+      setUserReports(reports);
+      alert(`Document shared with ${doctorEmail}`);
+      setShowShareModal(false);
+      setDoctorEmail("");
+      setReportToShare(null);
+    }
+  };
+
+  const openShareModal = (report) => {
+    setReportToShare(report);
+    setShowShareModal(true);
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
   };
 
   return (
@@ -36,6 +89,12 @@ function UserDashboard() {
           >
             Report
           </button>
+          <button
+            onClick={handleLogout}
+            style={{ marginLeft: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <LogOut size={18} /> Logout
+          </button>
         </div>
       </nav>
 
@@ -44,18 +103,18 @@ function UserDashboard() {
         <section className="profile-section">
           <div className="profile-content">
             <div className="profile-left">
-              <h2>Hello, John!</h2>
+              <h2>Hello, {currentUser?.username}!</h2>
               <p>Welcome back to your health dashboard.</p>
 
               <div className="profile-card">
                 <p>
-                  <strong>Disease:</strong> Diabetes Type II
+                  <strong>Total Reports:</strong> {userReports.length}
                 </p>
                 <p>
-                  <strong>Next Test Date:</strong> 25 Oct 2025
+                  <strong>Shared Reports:</strong> {userReports.filter(r => r.status === 'Shared').length}
                 </p>
                 <p>
-                  <strong>Progress:</strong> Improving (80%)
+                  <strong>Role:</strong> Patient
                 </p>
               </div>
             </div>
@@ -76,51 +135,52 @@ function UserDashboard() {
               <Upload size={22} /> Upload Report
             </h2>
 
-            <input type="file" onChange={handleFileChange} />
+            <input type="file" onChange={handleFileChange} accept=".pdf,.jpg,.jpeg,.png" />
             {selectedFile && (
               <p style={{ color: "#94a3b8", marginBottom: "1rem" }}>
                 Selected file: {selectedFile.name}
               </p>
             )}
 
-            <div className="button-row">
-              <button className="btn btn-view">
-                <Eye size={18} /> View Document
-              </button>
-              <button
-                className="btn btn-share"
-                onClick={() => setShowShareModal(true)}
-              >
-                <Share2 size={18} /> Share Document
-              </button>
-            </div>
-
             {/* 📋 PREVIOUS REPORTS */}
             <div className="report-history">
               <h3>
-                <FileText size={20} /> Previous Reports
+                <FileText size={20} /> Your Reports
               </h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Report Name</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Blood Test Report.pdf</td>
-                    <td>01 Oct 2025</td>
-                    <td>Uploaded</td>
-                  </tr>
-                  <tr>
-                    <td>ECG Report.pdf</td>
-                    <td>10 Sept 2025</td>
-                    <td>Shared</td>
-                  </tr>
-                </tbody>
-              </table>
+              {userReports.length === 0 ? (
+                <p style={{ color: "#94a3b8", textAlign: "center", padding: "2rem" }}>
+                  No reports uploaded yet. Upload your first report above.
+                </p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Report Name</th>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {userReports.map((report) => (
+                      <tr key={report.id}>
+                        <td>{report.fileName}</td>
+                        <td>{new Date(report.uploadDate).toLocaleDateString()}</td>
+                        <td>{report.status}</td>
+                        <td>
+                          <button
+                            className="btn btn-share"
+                            onClick={() => openShareModal(report)}
+                            style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                          >
+                            <Share2 size={16} /> Share
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </section>
